@@ -1,6 +1,18 @@
-# mycc — a tiny C compiler
+# mycc — a tiny C-to-EXE compiler
 
 `mycc` compiles a small subset of C directly to a Windows `.exe` via x86-64 AT&T assembly. Written in a single C++ file.
+
+> **This project was designed, written, debugged, and tested entirely by Claude (Anthropic's Opus 4.6 model) from a single prompt — no human wrote any of the source code.** The lexer, parser, code generator, Win64 ABI handling, test programs, build system, and this README were all produced by the model.
+
+## How it was built
+
+1. **Toolchain bootstrap** — installed MSYS2 + `mingw-w64-ucrt-x86_64-gcc` via `winget` so there was a working `g++` / `gcc` on Windows.
+2. **Single-file C++ compiler** — `compiler.cpp` implements three classic stages:
+   - **Lexer** — hand-written scanner producing a token stream (keywords, identifiers, numbers, string literals, operators, comments).
+   - **Parser** — recursive-descent parser building a typed AST (`PROG → FUNC → BLOCK/STMT → EXPR`) with the usual precedence ladder (equality → relational → additive → multiplicative → unary → primary).
+   - **Code generator** — walks the AST and emits x86-64 **AT&T-syntax** assembly following the **Windows x64 calling convention** (args in `RCX/RDX/R8/R9`, 32-byte shadow space, 16-byte stack alignment, `printf` linked from the CRT).
+3. **Driver** — `mycc.exe` writes the `.s` file, invokes `gcc` to assemble and link, and cleans up. One command: `.c` → `.exe`.
+4. **Tests** — three programs of increasing complexity (arithmetic, control flow, recursive functions) were compiled, linked, executed, and their output verified against expected results.
 
 ## Features
 
