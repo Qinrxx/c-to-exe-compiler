@@ -83,10 +83,11 @@ struct Node {
     string kind;
     long num=0;
     string s;
+    int line=0;
     vector<unique_ptr<Node>> ch;
 };
 using NP = unique_ptr<Node>;
-static NP mk(string k){ auto n=make_unique<Node>(); n->kind=k; return n; }
+static NP mk(string k, int line=0){ auto n=make_unique<Node>(); n->kind=k; n->line=line; return n; }
 
 struct Parser {
     vector<Token>& toks; size_t p=0;
@@ -116,26 +117,31 @@ struct Parser {
     }
     NP parseBlock(){ expect(T_LB,"{"); auto b=mk("BLOCK"); while(peek().t!=T_RB) b->ch.push_back(parseStmt()); expect(T_RB,"}"); return b; }
     NP parseStmt(){
+        int ln=peek().line;
         if(peek().t==T_LB) return parseBlock();
-        if(peek().t==T_INT){ p++; auto id=expect(T_IDENT,"var"); auto n=mk("DECL"); n->s=id.s;
+        if(peek().t==T_INT){ p++; auto id=expect(T_IDENT,"var"); auto n=mk("DECL",ln); n->s=id.s;
             if(accept(T_ASSIGN)) n->ch.push_back(parseExpr());
             expect(T_SEMI,";"); return n; }
-        if(peek().t==T_IF){ p++; expect(T_LP,"("); auto c=parseExpr(); expect(T_RP,")");
-            auto th=parseStmt(); auto n=mk("IF"); n->ch.push_back(move(c)); n->ch.push_back(move(th));
-            if(accept(T_ELSE)) n->ch.push_back(parseStmt()); return n; }
+        if(peek().t==T_IF){
+            p++; expect(T_LP,"("); auto c=parseExpr(); expect(T_RP,")");
+            auto th=parseStmt();
+            auto n=mk("IF",ln); n->ch.push_back(move(c)); n->ch.push_back(move(th));
+            if(accept(T_ELSE)) n->ch.push_back(parseStmt());
+            return n;
+        }
         if(peek().t==T_WHILE){ p++; expect(T_LP,"("); auto c=parseExpr(); expect(T_RP,")");
-            auto b=parseStmt(); auto n=mk("WHILE"); n->ch.push_back(move(c)); n->ch.push_back(move(b)); return n; }
+            auto b=parseStmt(); auto n=mk("WHILE",ln); n->ch.push_back(move(c)); n->ch.push_back(move(b)); return n; }
         if(peek().t==T_RETURN){ p++; auto e=parseExpr(); expect(T_SEMI,";");
-            auto n=mk("RET"); n->ch.push_back(move(e)); return n; }
+            auto n=mk("RET",ln); n->ch.push_back(move(e)); return n; }
         if(peek().t==T_PRINTF){ p++; expect(T_LP,"(");
             auto tstr=expect(T_STRING,"string");
-            auto n=mk("PRINTF"); n->s=tstr.s;
+            auto n=mk("PRINTF",ln); n->s=tstr.s;
             while(accept(T_COMMA)) n->ch.push_back(parseExpr());
             expect(T_RP,")"); expect(T_SEMI,";"); return n; }
         if(peek().t==T_IDENT && peek(1).t==T_ASSIGN){
             auto id=toks[p++]; p++; auto e=parseExpr(); expect(T_SEMI,";");
-            auto n=mk("ASSIGN"); n->s=id.s; n->ch.push_back(move(e)); return n; }
-        auto e=parseExpr(); expect(T_SEMI,";"); auto n=mk("EXPRSTMT"); n->ch.push_back(move(e)); return n;
+            auto n=mk("ASSIGN",ln); n->s=id.s; n->ch.push_back(move(e)); return n; }
+        auto e=parseExpr(); expect(T_SEMI,";"); auto n=mk("EXPRSTMT",ln); n->ch.push_back(move(e)); return n;
     }
     NP parseExpr(){ return parseEq(); }
     NP parseEq(){ auto l=parseRel();
@@ -173,6 +179,15 @@ struct Codegen {
     int labelN=0;
     vector<string> strings;
     string curEpilogue;
+    bool debugInfo=false;
+    int lastLine=0;
+
+    void emitLoc(int line){
+        if(debugInfo && line>0 && line!=lastLine){
+            o<<"\t.loc 1 "<<line<<" 0\n";
+            lastLine=line;
+        }
+    }
 
     string newLabel(){ return ".L"+to_string(labelN++); }
     int addString(const string& s){ strings.push_back(s); return (int)strings.size()-1; }
@@ -217,6 +232,7 @@ struct Codegen {
     }
 
     void genStmt(Node* n){
+        if(n->kind!="BLOCK") emitLoc(n->line);
         if(n->kind=="BLOCK"){ for(auto& c: n->ch) genStmt(c.get()); return; }
         if(n->kind=="DECL"){
             if(!n->ch.empty()){ genExpr(n->ch[0].get()); o<<"\tmovq %rax, "<<locals[n->s]<<"(%rbp)\n"; }
@@ -294,6 +310,29 @@ struct Codegen {
     }
 };
 
+static const char* tokName(Tok t){
+    switch(t){
+        case T_INT:return "INT";case T_IF:return "IF";case T_ELSE:return "ELSE";
+        case T_WHILE:return "WHILE";case T_RETURN:return "RETURN";case T_PRINTF:return "PRINTF";
+        case T_IDENT:return "IDENT";case T_NUM:return "NUM";case T_STRING:return "STRING";
+        case T_LP:return "(";case T_RP:return ")";case T_LB:return "{";case T_RB:return "}";
+        case T_SEMI:return ";";case T_COMMA:return ",";case T_ASSIGN:return "=";
+        case T_PLUS:return "+";case T_MINUS:return "-";case T_STAR:return "*";case T_SLASH:return "/";
+        case T_EQ:return "==";case T_NE:return "!=";case T_LT:return "<";case T_GT:return ">";
+        case T_LE:return "<=";case T_GE:return ">=";case T_EOF:return "EOF";
+    }
+    return "?";
+}
+static void dumpAst(Node* n, int depth){
+    for(int i=0;i<depth;i++) fputs("  ",stderr);
+    fprintf(stderr,"%s", n->kind.c_str());
+    if(!n->s.empty()) fprintf(stderr," '%s'", n->s.c_str());
+    if(n->kind=="NUM") fprintf(stderr," %ld", n->num);
+    if(n->line) fprintf(stderr,"  @%d", n->line);
+    fputc('\n',stderr);
+    for(auto& c: n->ch) dumpAst(c.get(), depth+1);
+}
+
 static string stripExt(const string& p){
     size_t slash=p.find_last_of("/\\");
     size_t dot=p.find_last_of('.');
@@ -305,19 +344,28 @@ int main(int argc, char**argv){
     if(argc<2){
         fprintf(stderr,
             "mycc - mini C compiler\n"
-            "usage: %s input.c [-o output] [-S] [--keep-asm]\n"
+            "usage: %s input.c [options]\n"
             "  default: produces <input>.exe (requires gcc on PATH)\n"
-            "  -S     : stop after assembly, write <input>.s\n"
-            "  -o X   : output name (X.exe, or X.s with -S)\n"
-            "  --keep-asm : keep intermediate .s when producing .exe\n",
+            "  -o X       : output name (X.exe, or X.s with -S)\n"
+            "  -S         : stop after codegen, write <input>.s\n"
+            "  -g         : emit debug info so gdb can step by source line\n"
+            "  --tokens   : dump the token stream to stderr\n"
+            "  --ast      : dump the parsed AST to stderr\n"
+            "  --keep-asm : keep intermediate .s alongside .exe\n"
+            "  -v         : verbose (print each stage)\n",
             argv[0]);
         return 1;
     }
-    string in, out; bool asmOnly=false, keepAsm=false;
+    string in, out;
+    bool asmOnly=false, keepAsm=false, dumpToks=false, dumpTree=false, verbose=false, dbg=false;
     for(int i=1;i<argc;i++){
         string a=argv[i];
         if(a=="-S") asmOnly=true;
+        else if(a=="-g") dbg=true;
         else if(a=="--keep-asm") keepAsm=true;
+        else if(a=="--tokens") dumpToks=true;
+        else if(a=="--ast") dumpTree=true;
+        else if(a=="-v") verbose=true;
         else if(a=="-o" && i+1<argc) out=argv[++i];
         else if(a[0]=='-'){ fprintf(stderr,"unknown flag %s\n",a.c_str()); return 1; }
         else in=a;
@@ -325,10 +373,26 @@ int main(int argc, char**argv){
     if(in.empty()){ fprintf(stderr,"no input file\n"); return 1; }
     ifstream f(in); if(!f){ fprintf(stderr,"can't open %s\n",in.c_str()); return 1; }
     stringstream ss; ss<<f.rdbuf();
+    if(verbose) fprintf(stderr,"[mycc] lexing %s\n", in.c_str());
     Lexer L; L.src=ss.str(); L.run();
+    if(dumpToks){
+        fprintf(stderr,"--- tokens ---\n");
+        for(auto& t: L.out){
+            fprintf(stderr,"  %4d  %-8s", t.line, tokName(t.t));
+            if(t.t==T_IDENT) fprintf(stderr," %s", t.s.c_str());
+            else if(t.t==T_NUM) fprintf(stderr," %ld", t.v);
+            else if(t.t==T_STRING) fprintf(stderr," \"%s\"", t.s.c_str());
+            fputc('\n',stderr);
+        }
+    }
+    if(verbose) fprintf(stderr,"[mycc] parsing\n");
     Parser P(L.out);
     auto prog=P.parseProgram();
-    Codegen C; C.genProgram(prog.get());
+    if(dumpTree){ fprintf(stderr,"--- ast ---\n"); dumpAst(prog.get(),0); }
+    if(verbose) fprintf(stderr,"[mycc] codegen\n");
+    Codegen C; C.debugInfo=dbg;
+    if(dbg) C.o<<"\t.file 1 \""<<in<<"\"\n";
+    C.genProgram(prog.get());
 
     string base = out.empty() ? stripExt(in) : stripExt(out);
     string asmPath = base + ".s";
@@ -338,7 +402,8 @@ int main(int argc, char**argv){
         return 0;
     }
     string exePath = base + ".exe";
-    string cmd = "gcc -static \"" + asmPath + "\" -o \"" + exePath + "\"";
+    string cmd = string("gcc ") + (dbg?"-g ":"") + "-static \"" + asmPath + "\" -o \"" + exePath + "\"";
+    if(verbose) fprintf(stderr,"[mycc] %s\n", cmd.c_str());
     int rc = system(cmd.c_str());
     if(rc!=0){
         fprintf(stderr,"gcc failed (exit %d). Is MinGW gcc on PATH?\n", rc);

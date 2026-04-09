@@ -41,6 +41,30 @@ mycc hello.c                 # -> hello.exe
 mycc hello.c -o myprog       # -> myprog.exe
 mycc hello.c -S              # -> hello.s (stop after codegen)
 mycc hello.c --keep-asm      # keep hello.s alongside hello.exe
+mycc hello.c -g              # emit debug info (gdb can step by source line)
+mycc hello.c --tokens        # dump lexer token stream
+mycc hello.c --ast           # dump parsed AST
+mycc hello.c -v              # verbose stage logging
+```
+
+### Debugging compiled programs
+
+`mycc` can emit DWARF `.file` / `.loc` directives so `gdb` can step through your
+source line-by-line:
+
+```
+mycc hello.c -g
+gdb hello.exe
+(gdb) break main
+(gdb) run
+(gdb) next        # step source line
+(gdb) print x     # inspect a local
+```
+
+Combined with `--tokens` / `--ast`, you can inspect every compiler stage:
+
+```
+mycc hello.c --tokens --ast -v
 ```
 
 ### Example
