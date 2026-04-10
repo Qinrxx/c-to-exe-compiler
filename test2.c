@@ -1,14 +1,14 @@
-int main() {
-    int i = 1;
-    int sum = 0;
-    while (i <= 10) {
-        if (i == 5) {
-            printf("skipping %d\n", i);
-        } else {
-            sum = sum + i;
-        }
-        i = i + 1;
+#include <stdio.h>
+int main(void) {
+    int x = 7;
+    int y = 3;
+    if (x > y && y > 0) printf("a\n");
+    if (x < y || x == 7) printf("b\n");
+    if (!(x == y)) printf("c\n");
+    int i;
+    for (i = 0; i < 3; i = i + 1) {
+        if (i == 1) continue;
+        printf("i=%d\n", i);
     }
-    printf("sum=%d\n", sum);
     return 0;
 }

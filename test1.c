@@ -1,7 +1,9 @@
-int main() {
-    int a = 7;
+#include <stdio.h>
+int main(void) {
+    int a = 17;
     int b = 5;
-    int c = a * b + 3;
-    printf("a=%d b=%d c=%d\n", a, b, c);
+    printf("%d %d %d %d %d\n", a+b, a-b, a*b, a/b, a%b);
+    printf("%d %d %d %d %d\n", a&b, a|b, a^b, a<<2, a>>1);
+    printf("%d %d %d\n", -a, ~a, !0);
     return 0;
 }
