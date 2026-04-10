@@ -1,11 +1,9 @@
 *.o
 *.obj
 tmp/
-test1.s
-test2.s
-test3.s
-test1.exe
-test2.exe
-test3.exe
+test*.s
+test*.exe
+test*.actual
+t*.exe
 bingle.s
 bingle.exe

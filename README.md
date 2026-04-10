@@ -14,14 +14,43 @@
 3. **Driver** — `mycc.exe` writes the `.s` file, invokes `gcc` to assemble and link, and cleans up. One command: `.c` → `.exe`.
 4. **Tests** — three programs of increasing complexity (arithmetic, control flow, recursive functions) were compiled, linked, executed, and their output verified against expected results.
 
-## Features
+## Features (v2)
 
-- `int` variables and arithmetic (`+ - * /`)
-- Comparisons (`== != < > <= >=`)
-- `if` / `else`, `while`
-- Functions with up to 4 `int` parameters returning `int` (recursion works)
-- `printf("fmt", args...)` with up to 3 int arguments
-- `//` and `/* */` comments
+**Types**
+- `int` (64-bit), `char` (1 byte), `void`
+- Pointers (`T*`), fixed-size arrays (`T[N]`), pointer arithmetic with proper element scaling
+- String literals, character literals (with `\n \t \r \0 \\ \' \" \xNN` escapes)
+- Integer literals: decimal, hex (`0xff`), octal (`010`)
+
+**Operators**
+- Arithmetic: `+ - * / %`
+- Bitwise: `& | ^ << >> ~`
+- Logical: `&& || !` (short-circuit)
+- Comparisons: `== != < > <= >=`
+- Assignment: `= += -= *= /= %=`
+- Increment/decrement: `++ --` (pre and post)
+- Address-of `&`, dereference `*`, indexing `[]`, `sizeof`, ternary `?:`
+
+**Control flow**
+- `if` / `else`, `while`, `do`/`while`, `for`, `break`, `continue`, `return`
+- Nested scopes with proper shadowing
+
+**Functions**
+- Any number of parameters (>4 spill to the stack per the Win64 ABI)
+- Recursion, `int` / `char` / `void` / pointer returns
+- Unknown function names are emitted as externs, so anything in the C runtime
+  (`printf`, `puts`, `malloc`, …) just works via the linker — no special-casing.
+
+**Globals**
+- Scalar globals (zero-init or constant init)
+
+**Preprocessor / misc**
+- `#`-prefixed directives are silently skipped, so `#include <stdio.h>` is a no-op (the linker provides `printf`).
+- `//` and `/* */` comments.
+
+**Diagnostics**
+- `file:line:col: error: …` with the source line and a caret pointing at the column.
+- Errors accumulate so you see more than one per run.
 
 ## Pipeline
 
@@ -106,12 +135,17 @@ or `make`.
 
 - `compiler.cpp` — the whole compiler
 - `Makefile` — build rule
-- `test1.c / test2.c / test3.c` — sample programs
+- `test1.c` … `test10.c` — test programs covering the v2 feature set
+- `test*.expected` — expected stdout for each test
+- `run_tests.bat` — compiles and runs every test, diffs output against expected
 - `mycc.exe` — prebuilt statically-linked binary (Windows x64)
 
 ## Limitations
 
-This is a teaching-sized compiler. Not supported: pointers, arrays, structs, `for` loops, `char`/`float`/other types, globals, preprocessor, multiple-file builds, >4 function args, >3 printf args.
+Still a teaching-sized compiler. Not supported: `struct`/`union`/`enum`,
+floating-point, `typedef`, casts, function pointers, variadic function
+*definitions* (calling variadics like `printf` is fine), multi-file builds,
+a real preprocessor (`#include` is treated as a no-op).
 
 ## License
 
